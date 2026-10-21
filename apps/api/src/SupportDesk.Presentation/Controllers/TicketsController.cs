@@ -6,6 +6,10 @@ using SupportDesk.Application.Features.Tickets.Commands.ChangeTicketStatus;
 using SupportDesk.Application.Features.Tickets.Commands.RaiseTicket;
 using SupportDesk.Application.Features.Tickets.Queries.GetTicket;
 using SupportDesk.Application.Features.Tickets.Queries.SearchTickets;
+using SupportDesk.Application.Features.Tickets.Commands.EscalateTicket;
+using SupportDesk.Application.Abstractions;
+using SupportDesk.Application.Exceptions;
+using SupportDesk.Domain.Repositories;
 
 namespace SupportDesk.Presentation.Controllers;
 
@@ -56,4 +60,31 @@ public sealed class TicketsController : ControllerBase
         [FromServices] AssignTicketCommandHandler handler,
         CancellationToken ct) =>
         handler.HandleAsync(id, request, ct);
+
+        /// <summary>Escalates a ticket by one priority level.</summary>
+    [HttpPost("{id:int}/escalate")]
+    public Task<TicketDetailDto> Escalate(
+        int id,
+        EscalateTicketRequest request,
+        [FromServices] EscalateTicketCommandHandler handler,
+        CancellationToken ct) =>
+        handler.HandleAsync(id, request, ct);
+
+    
+    /// <summary>Returns escalation history, newest first.</summary>
+    [HttpGet("{id:int}/escalations")]
+    public async Task<IReadOnlyList<TicketEscalationDto>> GetEscalations(
+        int id,
+        [FromServices] ITicketRepository tickets,
+        [FromServices] ITicketEscalationQueries escalations,
+        CancellationToken ct)
+    {
+        var ticket = await tickets.GetByIdAsync(id, ct);
+
+        if (ticket is null)
+            throw new NotFoundException("Ticket", id);
+
+        return await escalations.GetByTicketIdAsync(id, ct);
+    }
+
 }

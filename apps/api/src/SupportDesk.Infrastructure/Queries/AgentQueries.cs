@@ -70,4 +70,26 @@ public sealed class AgentQueries(SupportDbContext db) : IAgentQueries
                 a.OpenTicketCount))
             .FirstOrDefaultAsync(ct);
     }
+
+    
+    public async Task<bool> IsCurrentAgentEligibleAsync(
+        int agentId,
+        int categoryId,
+        bool requiresSpecialist,
+        CancellationToken ct)
+    {
+        return await db.Set<Agent>()
+            .Where(agent => agent.Id == agentId && agent.IsActive)
+            .Where(agent =>
+                !requiresSpecialist ||
+                agent.Specializations.Any(s => s.CategoryId == categoryId))
+            .Where(agent =>
+                db.Set<Ticket>().Count(ticket =>
+                    ticket.AssignedAgentId == agent.Id &&
+                    ticket.Status != TicketStatus.Resolved &&
+                    ticket.Status != TicketStatus.Closed)
+                <= agent.MaxOpenTickets)
+            .AnyAsync(ct);
+    }
+
 }

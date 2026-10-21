@@ -134,4 +134,53 @@ public sealed class Ticket : AggregateRoot
         SlaStartedAtUtc = nowUtc;
         UpdatedAtUtc = nowUtc;
     }
+
+    
+    /// <summary>
+    /// Checks whether the ticket can be escalated.
+    /// </summary>
+    /// <exception cref="BusinessRuleViolationException">
+    /// The ticket is Critical, Resolved, or Closed.
+    /// </exception>
+    public void EnsureCanEscalate()
+    {
+        if (Status == TicketStatus.Resolved)
+        {
+            throw new BusinessRuleViolationException(
+                $"Ticket {Reference} is resolved and cannot be escalated.");
+        }
+
+        if (Status == TicketStatus.Closed)
+        {
+            throw new BusinessRuleViolationException(
+                $"Ticket {Reference} is closed and cannot be escalated.");
+        }
+
+        if (Priority == TicketPriority.Critical)
+        {
+            throw new BusinessRuleViolationException(
+                $"Ticket {Reference} is already Critical and cannot be escalated.");
+        }
+    }
+
+    /// <summary>
+    /// Raises the ticket priority by exactly one level.
+    /// Assignment and SLA recalculation are handled by the application layer.
+    /// </summary>
+    public void EscalatePriority(DateTime nowUtc)
+    {
+        EnsureCanEscalate();
+
+        Priority = Priority switch
+        {
+            TicketPriority.Low => TicketPriority.Medium,
+            TicketPriority.Medium => TicketPriority.High,
+            TicketPriority.High => TicketPriority.Critical,
+            _ => throw new BusinessRuleViolationException(
+                $"Ticket {Reference} cannot be escalated.")
+        };
+
+        UpdatedAtUtc = nowUtc;
+    }
+
 }

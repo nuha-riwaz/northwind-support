@@ -7,6 +7,8 @@ using SupportDesk.Infrastructure.Data;
 using SupportDesk.Infrastructure.Queries;
 using SupportDesk.Infrastructure.Repositories;
 using SupportDesk.Infrastructure.Services;
+using SupportDesk.Application.Abstractions;
+using SupportDesk.Infrastructure.Queries;
 
 namespace SupportDesk.Infrastructure;
 
@@ -42,6 +44,8 @@ public static class DependencyInjection
         services.AddScoped<ICategoryQueries, CategoryQueries>();
 
         services.AddScoped<SupportDbSeeder>();
+
+        services.AddScoped<ITicketEscalationQueries, TicketEscalationQueries>();
 
         return services;
     }

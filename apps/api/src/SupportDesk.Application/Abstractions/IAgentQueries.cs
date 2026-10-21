@@ -17,4 +17,10 @@ public interface IAgentQueries
         int categoryId,
         bool requiresSpecialist,
         CancellationToken ct);
+
+    Task<bool> IsCurrentAgentEligibleAsync(
+    int agentId,
+    int categoryId,
+    bool requiresSpecialist,
+    CancellationToken ct);
 }
