@@ -17,6 +17,7 @@ export const emptyFilters: TicketFilters = {
   pageSize: 20,
   sortBy: 'createdAtUtc',
   sortDirection: 'desc',
+  slaStatus: undefined,
 };
 
 interface State {
