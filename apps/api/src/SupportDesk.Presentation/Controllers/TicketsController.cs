@@ -1,14 +1,16 @@
+
+using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
+using SupportDesk.Application.Abstractions;
 using SupportDesk.Application.Contracts.Common;
 using SupportDesk.Application.Contracts.Tickets;
+using SupportDesk.Application.Exceptions;
 using SupportDesk.Application.Features.Tickets.Commands.AssignTicket;
 using SupportDesk.Application.Features.Tickets.Commands.ChangeTicketStatus;
+using SupportDesk.Application.Features.Tickets.Commands.EscalateTicket;
 using SupportDesk.Application.Features.Tickets.Commands.RaiseTicket;
 using SupportDesk.Application.Features.Tickets.Queries.GetTicket;
 using SupportDesk.Application.Features.Tickets.Queries.SearchTickets;
-using SupportDesk.Application.Features.Tickets.Commands.EscalateTicket;
-using SupportDesk.Application.Abstractions;
-using SupportDesk.Application.Exceptions;
 using SupportDesk.Domain.Repositories;
 
 namespace SupportDesk.Presentation.Controllers;
@@ -28,7 +30,10 @@ public sealed class TicketsController : ControllerBase
 
     /// <summary>Returns one ticket.</summary>
     [HttpGet("{id:int}")]
-    public Task<TicketDetailDto> Get(int id, [FromServices] GetTicketQueryHandler handler, CancellationToken ct) =>
+    public Task<TicketDetailDto> Get(
+        int id,
+        [FromServices] GetTicketQueryHandler handler,
+        CancellationToken ct) =>
         handler.HandleAsync(id, ct);
 
     /// <summary>Raises a new ticket.</summary>
@@ -40,7 +45,10 @@ public sealed class TicketsController : ControllerBase
     {
         var created = await handler.HandleAsync(request, ct);
 
-        return CreatedAtAction(nameof(Get), new { id = created.Id }, created);
+        return CreatedAtAction(
+            nameof(Get),
+            new { id = created.Id },
+            created);
     }
 
     /// <summary>Moves a ticket to another status.</summary>
@@ -52,7 +60,7 @@ public sealed class TicketsController : ControllerBase
         CancellationToken ct) =>
         handler.HandleAsync(id, request, ct);
 
-    /// <summary>Assigns the ticket to an agent, or unassigns it when no agent is given.</summary>
+    /// <summary>Assigns the ticket to an agent, or unassigns it.</summary>
     [HttpPatch("{id:int}/assignment")]
     public Task<TicketDetailDto> Assign(
         int id,
@@ -61,16 +69,41 @@ public sealed class TicketsController : ControllerBase
         CancellationToken ct) =>
         handler.HandleAsync(id, request, ct);
 
-        /// <summary>Escalates a ticket by one priority level.</summary>
+    /// <summary>Escalates a ticket by one priority level.</summary>
     [HttpPost("{id:int}/escalate")]
-    public Task<TicketDetailDto> Escalate(
+    public async Task<ActionResult<TicketDetailDto>> Escalate(
         int id,
         EscalateTicketRequest request,
         [FromServices] EscalateTicketCommandHandler handler,
-        CancellationToken ct) =>
-        handler.HandleAsync(id, request, ct);
+        CancellationToken ct)
+    {
+        var agentId = User.FindFirstValue(
+            ClaimTypes.NameIdentifier);
 
-    
+        if (!int.TryParse(agentId, out _))
+        {
+            return Unauthorized();
+        }
+
+        var escalatedBy = User.FindFirstValue(
+            ClaimTypes.Name)
+            ?? User.FindFirstValue(ClaimTypes.Email)
+            ?? agentId;
+
+        var authenticatedRequest = new EscalateTicketRequest
+        {
+            Reason = request.Reason,
+            EscalatedBy = escalatedBy
+        };
+
+        var updated = await handler.HandleAsync(
+            id,
+            authenticatedRequest,
+            ct);
+
+        return Ok(updated);
+    }
+
     /// <summary>Returns escalation history, newest first.</summary>
     [HttpGet("{id:int}/escalations")]
     public async Task<IReadOnlyList<TicketEscalationDto>> GetEscalations(
@@ -82,9 +115,10 @@ public sealed class TicketsController : ControllerBase
         var ticket = await tickets.GetByIdAsync(id, ct);
 
         if (ticket is null)
+        {
             throw new NotFoundException("Ticket", id);
+        }
 
         return await escalations.GetByTicketIdAsync(id, ct);
     }
-
 }

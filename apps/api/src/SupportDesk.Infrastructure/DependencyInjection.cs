@@ -7,8 +7,6 @@ using SupportDesk.Infrastructure.Data;
 using SupportDesk.Infrastructure.Queries;
 using SupportDesk.Infrastructure.Repositories;
 using SupportDesk.Infrastructure.Services;
-using SupportDesk.Application.Abstractions;
-using SupportDesk.Infrastructure.Queries;
 
 namespace SupportDesk.Infrastructure;
 

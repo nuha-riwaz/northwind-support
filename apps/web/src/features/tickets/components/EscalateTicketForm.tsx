@@ -24,35 +24,50 @@ export function EscalateTicketForm({
     ticket.status === 'Resolved' ||
     ticket.status === 'Closed';
 
-  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const submit = async (
+    event: React.FormEvent<HTMLFormElement>
+  ) => {
     event.preventDefault();
     setError(undefined);
 
     const cleanedReason = reason.trim();
 
-    if (cleanedReason.length < 5 || cleanedReason.length > 500) {
-      setError('Reason must contain between 5 and 500 characters.');
+    if (
+      cleanedReason.length < 5 ||
+      cleanedReason.length > 500
+    ) {
+      setError(
+        'Reason must contain between 5 and 500 characters.'
+      );
       return;
     }
 
     setIsSaving(true);
 
     try {
-      // Temporary until Task 3 JWT authentication is implemented.
       const updated = await ticketsApi.escalateTicket(
         ticket.id,
-        cleanedReason,
-        'Support Agent',
+        cleanedReason
       );
 
       onUpdated(updated);
       setReason('');
       onEscalated();
     } catch (caught) {
-      if (caught instanceof ApiError && caught.status === 409) {
-        setError('This ticket can no longer be escalated. Refresh the ticket.');
+      if (
+        caught instanceof ApiError &&
+        caught.status === 409
+      ) {
+        setError(
+          'This ticket can no longer be escalated. Refresh the ticket.'
+        );
       } else {
-        setError(toErrorMessage(caught, 'Could not escalate the ticket.'));
+        setError(
+          toErrorMessage(
+            caught,
+            'Could not escalate the ticket.'
+          )
+        );
       }
     } finally {
       setIsSaving(false);
@@ -69,18 +84,25 @@ export function EscalateTicketForm({
       </p>
 
       <div className="field">
-        <label className="field__label" htmlFor="escalation-reason">
+        <label
+          className="field__label"
+          htmlFor="escalation-reason"
+        >
           Escalation reason
         </label>
+
         <textarea
           id="escalation-reason"
           rows={3}
           maxLength={500}
           value={reason}
           disabled={cannotEscalate || isSaving}
-          onChange={(event) => setReason(event.target.value)}
+          onChange={(event) =>
+            setReason(event.target.value)
+          }
           aria-invalid={Boolean(error)}
         />
+
         <small>5–500 characters required.</small>
       </div>
 

@@ -9,9 +9,7 @@ public sealed class EscalateTicketRequest
     [StringLength(500, MinimumLength = 5)]
     [RegularExpression(@"(?s).*\S.*", ErrorMessage = "Reason cannot be blank.")]
     public string Reason { get; init; } = string.Empty;
+    
+    public string EscalatedBy { get; set; } = string.Empty;
 
-    // Temporary for Task 2; Task 3 will derive this from the JWT.
-    [Required]
-    [StringLength(100, MinimumLength = 1)]
-    public string EscalatedBy { get; init; } = string.Empty;
 }
