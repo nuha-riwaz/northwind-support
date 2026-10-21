@@ -1,9 +1,11 @@
+using SupportDesk.Application.Configuration;
 using System.Text.Json.Serialization;
 using SupportDesk.Application;
 using SupportDesk.Infrastructure;
 using SupportDesk.Presentation.Extensions;
 using SupportDesk.Presentation.Filters;
 using SupportDesk.Presentation.Middleware;
+using SupportDesk.Domain.Aggregates.Tickets;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -29,6 +31,21 @@ builder.Services.AddSwaggerGen();
 
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
+
+builder.Services
+    .AddOptions<SlaOptions>()
+    .Bind(builder.Configuration.GetSection(SlaOptions.SectionName))
+    .Validate(options =>
+        options.BaseWindowHours.Count == Enum.GetValues<TicketPriority>().Length &&
+        Enum.GetValues<TicketPriority>().All(priority =>
+            options.BaseWindowHours.TryGetValue(priority, out var hours) && hours > 0) &&
+        options.PremiumCustomerMultiplier > 0 &&
+        options.PremiumCustomerMultiplier <= 1 &&
+        options.MinimumWindowHours > 0 &&
+        options.AtRiskThresholdPercent >= 0 &&
+        options.AtRiskThresholdPercent <= 100,
+        "SLA configuration contains invalid values.")
+    .ValidateOnStart();
 
 var app = builder.Build();
 

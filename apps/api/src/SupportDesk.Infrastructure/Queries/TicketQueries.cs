@@ -7,6 +7,8 @@ using SupportDesk.Domain.Aggregates.Categories;
 using SupportDesk.Domain.Aggregates.Customers;
 using SupportDesk.Domain.Aggregates.Tickets;
 using SupportDesk.Infrastructure.Data;
+using Microsoft.Extensions.Options;
+using SupportDesk.Application.Configuration;
 
 namespace SupportDesk.Infrastructure.Queries;
 
@@ -14,18 +16,20 @@ namespace SupportDesk.Infrastructure.Queries;
 /// Ticket reads. Projected in the database and never tracked. Aggregates hold only each
 /// other's ids, so the customer, category and agent labels are joined in here, on the read side.
 /// </summary>
-public sealed class TicketQueries(SupportDbContext db, IClock clock) : ITicketQueries
+public sealed class TicketQueries(
+    SupportDbContext db,
+    IClock clock,
+    IOptions<SlaOptions> slaOptions) : ITicketQueries
 {
     /// <remarks>
     /// Applies the requested filters in the database before counting, sorting and paging.
     /// </remarks>
     public async Task<PagedResult<TicketListItemDto>> GetPagedAsync(TicketQuery query, CancellationToken ct)
     {
-        var tickets = ApplyFilters(TicketsWithLabels(), query);
-
-        var totalCount = await tickets.CountAsync(ct);
-
         var now = clock.UtcNow;
+        var tickets = ApplyFilters(TicketsWithLabels(), query, now);
+        
+        var totalCount = await tickets.CountAsync(ct);
 
         var items = await ApplySort(tickets, query)
             .Skip((query.Page - 1) * query.PageSize)
@@ -44,7 +48,17 @@ public sealed class TicketQueries(SupportDbContext db, IClock clock) : ITicketQu
                 UpdatedAtUtc = x.Ticket.UpdatedAtUtc,
                 DueAtUtc = x.Ticket.DueAtUtc,
                 ResolvedAtUtc = x.Ticket.ResolvedAtUtc,
-                SlaStatus = SlaEvaluator.Evaluate(x.Ticket.DueAtUtc, x.Ticket.ResolvedAtUtc, now)
+                SlaStatus = x.Ticket.SlaStartedAtUtc.HasValue
+                    ? SlaEvaluator.Evaluate(
+                        x.Ticket.DueAtUtc,
+                        x.Ticket.ResolvedAtUtc,
+                        now,
+                        x.Ticket.SlaStartedAtUtc.Value,
+                        slaOptions.Value.AtRiskThresholdPercent)
+                    : SlaEvaluator.Evaluate(
+                        x.Ticket.DueAtUtc,
+                        x.Ticket.ResolvedAtUtc,
+                        now)
             })
             .ToListAsync(ct);
 
@@ -73,7 +87,18 @@ public sealed class TicketQueries(SupportDbContext db, IClock clock) : ITicketQu
                 UpdatedAtUtc = x.Ticket.UpdatedAtUtc,
                 DueAtUtc = x.Ticket.DueAtUtc,
                 ResolvedAtUtc = x.Ticket.ResolvedAtUtc,
-                SlaStatus = SlaEvaluator.Evaluate(x.Ticket.DueAtUtc, x.Ticket.ResolvedAtUtc, now)
+
+                SlaStatus = x.Ticket.SlaStartedAtUtc.HasValue
+                    ? SlaEvaluator.Evaluate(
+                        x.Ticket.DueAtUtc,
+                        x.Ticket.ResolvedAtUtc,
+                        now,
+                        x.Ticket.SlaStartedAtUtc.Value,
+                        slaOptions.Value.AtRiskThresholdPercent)
+                    : SlaEvaluator.Evaluate(
+                        x.Ticket.DueAtUtc,
+                        x.Ticket.ResolvedAtUtc,
+                        now)
             })
             .FirstOrDefaultAsync(ct);
     }
@@ -100,7 +125,18 @@ public sealed class TicketQueries(SupportDbContext db, IClock clock) : ITicketQu
                 UpdatedAtUtc = x.Ticket.UpdatedAtUtc,
                 DueAtUtc = x.Ticket.DueAtUtc,
                 ResolvedAtUtc = x.Ticket.ResolvedAtUtc,
-                SlaStatus = SlaEvaluator.Evaluate(x.Ticket.DueAtUtc, x.Ticket.ResolvedAtUtc, now)
+
+                SlaStatus = x.Ticket.SlaStartedAtUtc.HasValue
+                    ? SlaEvaluator.Evaluate(
+                        x.Ticket.DueAtUtc,
+                        x.Ticket.ResolvedAtUtc,
+                        now,
+                        x.Ticket.SlaStartedAtUtc.Value,
+                        slaOptions.Value.AtRiskThresholdPercent)
+                    : SlaEvaluator.Evaluate(
+                        x.Ticket.DueAtUtc,
+                        x.Ticket.ResolvedAtUtc,
+                        now)
             })
             .ToListAsync(ct);
     }
@@ -117,7 +153,8 @@ public sealed class TicketQueries(SupportDbContext db, IClock clock) : ITicketQu
 
         private static IQueryable<TicketWithLabels> ApplyFilters(
             IQueryable<TicketWithLabels> source,
-            TicketQuery query)
+            TicketQuery query,
+            DateTime nowUtc)
         {
             if (query.Status.HasValue)
             {
@@ -128,6 +165,20 @@ public sealed class TicketQueries(SupportDbContext db, IClock clock) : ITicketQu
             {
                 source = source.Where(x => x.Ticket.Priority == query.Priority.Value);
             }
+
+            
+            if (query.SlaStatus == SlaStatus.Breached)
+            {
+                source = source.Where(x =>
+                    x.Ticket.DueAtUtc != null &&
+                    (
+                        (x.Ticket.ResolvedAtUtc != null &&
+                        x.Ticket.ResolvedAtUtc > x.Ticket.DueAtUtc) ||
+                        (x.Ticket.ResolvedAtUtc == null &&
+                        x.Ticket.DueAtUtc < nowUtc)
+                    ));
+            }
+
 
             if (query.CategoryId.HasValue)
             {
@@ -190,6 +241,30 @@ public sealed class TicketQueries(SupportDbContext db, IClock clock) : ITicketQu
         // Keeps paging stable when the sort column has duplicates.
         return sorted.ThenByDescending(x => x.Ticket.Id);
     }
+
+
+    /// <summary>
+    /// Calculates the current SLA status using the configured AtRisk threshold.
+    /// Existing tickets without an SLA start timestamp use their creation time.
+    /// </summary>
+    private SlaStatus EvaluateSla(Ticket ticket, DateTime nowUtc)
+    {
+        if (ticket.SlaStartedAtUtc is null)
+        {
+            return SlaEvaluator.Evaluate(
+                ticket.DueAtUtc,
+                ticket.ResolvedAtUtc,
+                nowUtc);
+        }
+
+        return SlaEvaluator.Evaluate(
+            ticket.DueAtUtc,
+            ticket.ResolvedAtUtc,
+            nowUtc,
+            ticket.SlaStartedAtUtc.Value,
+            slaOptions.Value.AtRiskThresholdPercent);
+    }
+
 
     private sealed class TicketWithLabels
     {

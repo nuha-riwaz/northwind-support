@@ -8,11 +8,27 @@ using SupportDesk.Infrastructure.Data;
 using SupportDesk.Infrastructure.Queries;
 using SupportDesk.UnitTests.TestDoubles;
 using SupportDesk.Domain.Aggregates.Agents;
+using Microsoft.Extensions.Options;
+using SupportDesk.Application.Configuration;
 
 namespace SupportDesk.UnitTests.Infrastructure.Queries;
 
 public sealed class TicketQueriesTests
 {
+    /// <summary>
+    /// Creates ticket queries with the SLA configuration used by tests.
+    /// </summary>
+    private static TicketQueries CreateQueries(SupportDbContext db)
+    {
+        var options = Options.Create(new SlaOptions
+        {
+            AtRiskThresholdPercent = 25
+        });
+
+        return new TicketQueries(db, new FixedClock(), options);
+    }
+
+    
     private static async Task<(SqliteConnection Connection, SupportDbContext Db)>
         CreateDatabaseAsync()
     {
@@ -82,8 +98,8 @@ public sealed class TicketQueriesTests
 
         await SeedAsync(db);
 
-        var queries = new TicketQueries(db, new FixedClock());
-
+        var queries = CreateQueries(db);
+        
         var result = await queries.GetPagedAsync(
             new TicketQuery { Priority = TicketPriority.High },
             CancellationToken.None);
@@ -107,7 +123,7 @@ public sealed class TicketQueriesTests
         var customer = await db.Set<Customer>()
             .SingleAsync(x => x.Name == "Acme Corporation");
 
-        var queries = new TicketQueries(db, new FixedClock());
+        var queries = CreateQueries(db);
 
         var result = await queries.GetPagedAsync(
             new TicketQuery
@@ -133,7 +149,7 @@ public sealed class TicketQueriesTests
 
         await SeedAsync(db);
 
-        var queries = new TicketQueries(db, new FixedClock());
+        var queries = CreateQueries(db);
 
         var result = await queries.GetPagedAsync(
             new TicketQuery { Search = " Northwind " },
@@ -154,8 +170,8 @@ public sealed class TicketQueriesTests
 
         await SeedAsync(db);
 
-        var queries = new TicketQueries(db, new FixedClock());
-
+        var queries = CreateQueries(db);
+        
         var result = await queries.GetPagedAsync(
             new TicketQuery
             {
@@ -186,7 +202,7 @@ public sealed class TicketQueriesTests
         ticket.ChangeStatus(TicketStatus.Open, FixedClock.DefaultNow);
         await db.SaveChangesAsync();
 
-        var queries = new TicketQueries(db, new FixedClock());
+        var queries = CreateQueries(db);
 
         var result = await queries.GetPagedAsync(
             new TicketQuery { Status = TicketStatus.Open },
@@ -225,7 +241,7 @@ public sealed class TicketQueriesTests
 
         await db.SaveChangesAsync();
 
-        var queries = new TicketQueries(db, new FixedClock());
+        var queries = CreateQueries(db);
 
         var result = await queries.GetPagedAsync(
             new TicketQuery { CategoryId = otherCategory.Id },
@@ -260,7 +276,7 @@ public sealed class TicketQueriesTests
         assignedTicket.AssignTo(agent.Id, FixedClock.DefaultNow);
         await db.SaveChangesAsync();
 
-        var queries = new TicketQueries(db, new FixedClock());
+        var queries = CreateQueries(db);
 
         var result = await queries.GetPagedAsync(
             new TicketQuery { UnassignedOnly = true },
@@ -310,7 +326,7 @@ public sealed class TicketQueriesTests
 
         await db.SaveChangesAsync();
 
-        var queries = new TicketQueries(db, new FixedClock());
+        var queries = CreateQueries(db);
 
         var result = await queries.GetPagedAsync(
             new TicketQuery { AssignedAgentId = agent1.Id },

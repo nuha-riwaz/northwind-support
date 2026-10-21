@@ -43,6 +43,12 @@ public sealed class Ticket : AggregateRoot
     /// <summary>When the team has committed to responding by. Null when no SLA applies.</summary>
     public DateTime? DueAtUtc { get; private set; }
 
+    /// <summary>
+    /// When the current SLA window began.
+    /// Updated when the SLA deadline is recalculated.
+    /// </summary>
+    public DateTime? SlaStartedAtUtc { get; private set; }
+    
     public DateTime? ResolvedAtUtc { get; private set; }
 
     /// <summary>True while the ticket still needs work from an agent.</summary>
@@ -109,6 +115,23 @@ public sealed class Ticket : AggregateRoot
     public void AssignTo(int? agentId, DateTime nowUtc)
     {
         AssignedAgentId = agentId;
+        UpdatedAtUtc = nowUtc;
+    }
+
+    /// <summary>
+    /// Sets the SLA deadline for the ticket.
+    /// The caller calculates the deadline using the configured SLA rules.
+    /// </summary>
+    public void SetDueDate(DateTime dueAtUtc, DateTime nowUtc)
+    {
+        if (dueAtUtc <= nowUtc)
+        {
+            throw new BusinessRuleViolationException(
+                "The SLA deadline must be later than the current time.");
+        }
+
+        DueAtUtc = dueAtUtc;
+        SlaStartedAtUtc = nowUtc;
         UpdatedAtUtc = nowUtc;
     }
 }

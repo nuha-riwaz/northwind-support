@@ -8,4 +8,13 @@ namespace SupportDesk.Application.Abstractions;
 public interface IAgentQueries
 {
     Task<IReadOnlyList<AgentDto>> GetAllAsync(CancellationToken ct);
+
+    /// <summary>
+    /// Finds the least-busy eligible agent for a ticket category.
+    /// Returns null when no agent is eligible.
+    /// </summary>
+    Task<AgentSelectionDto?> FindBestAvailableAsync(
+        int categoryId,
+        bool requiresSpecialist,
+        CancellationToken ct);
 }
